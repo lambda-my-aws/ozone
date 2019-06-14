@@ -1,0 +1,294 @@
+---
+Description: >-
+  Pipeline to release Lambda layers publicly when new release is created
+
+Metadata:
+  Version: '2019-05-31'
+  Author: John Mille john@lambda-my-aws.io
+  Licence: Apache 2.0
+
+Parameters:
+  LayerName:
+    Type: String
+    Default: ozone
+  ArtifactsBucketName:
+    Type: String
+  GitHubOAuthToken:
+    Type: String
+    NoEcho: true
+  PypiUsername:
+    Type: String
+  BranchName:
+    Type: String
+    Default: master
+
+Resources:
+  SsmPypiUsername:
+    Type: AWS::SSM::Parameter
+    Properties:
+      Description: !Sub 'Password for Pypi'
+      Name: !Sub '/codebuild/pypi/username'
+      Tier: Standard
+      Type: String
+      Value: !Ref PypiUsername
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ArtifactsBucketName}.${AWS::Region}'
+  CloudformationRole:
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/PowerUserAccess
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - !Sub 'cloudformation.${AWS::URLSuffix}'
+    Type: AWS::IAM::Role
+  CodeBuildRole:
+    Properties:
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - !Sub 'codebuild.${AWS::URLSuffix}'
+      Policies:
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - s3:PutObject
+                  - s3:PutObjectVersion
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Effect: Allow
+                Resource:
+                  - !Sub '${ArtifactsBucket.Arn}/*'
+          PolicyName: LambdaLayers-CodeBuild
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - ssm:Get*
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${SsmPypiUsername}'
+                  - !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/codebuild/pypi/password'
+              - Action:
+                  - kms:Decrypt*
+                Effect: Allow
+                Resource:
+                  - !Sub 'arn:aws:kms:${AWS::Region}:${AWS::AccountId}:alias/aws/ssm'
+          PolicyName: LambdaLayers-CodeBuildSsmAccess
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - codebuild:Get*
+                  - codebuild:BatchGet*
+                Effect: Allow
+                Resource:
+                  - '*'
+          PolicyName: LambdaLayers-S3Access
+    Type: AWS::IAM::Role
+  CodePipelineRole:
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action:
+              - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service:
+                - !Sub 'codepipeline.${AWS::URLSuffix}'
+        Version: '2012-10-17'
+      Policies:
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - s3:PutObject
+                  - s3:PutObjectVersion
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Effect: Allow
+                Resource:
+                  - !Sub '${ArtifactsBucket.Arn}/*'
+          PolicyName: LambdaLayers-S3Access
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:StartBuild
+                Effect: Allow
+                Resource: '*'
+          PolicyName: LambdaLayers-CodeBuildAccess
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - iam:PassRole
+                Condition:
+                  StringEqualsIfExists:
+                    iam:PassedToService:
+                      - !Sub 'cloudformation.${AWS::URLSuffix}'
+                Effect: Allow
+                Resource: '*'
+              - Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:DeleteStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:UpdateStack
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DeleteChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:SetStackPolicy
+                  - cloudformation:ValidateTemplate
+                Effect: Allow
+                Resource: '*'
+          PolicyName: LambdaLayers-PassRole
+        - PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                  - lambda:Invoke
+                  - lambda:InvokeFunction
+                  - lambda:List*
+                  - lambda:Get*
+                Effect: Allow
+                Resource:
+                  - '*'
+          PolicyName: Pipeline-LambdaAccess
+    Type: AWS::IAM::Role
+  PypiReleaseProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Description: !Sub 'Builds Pypi release for ${LayerName} in python3.7'
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: PYPI_USERNAME
+            Type: PARAMETER_STORE
+            Value: !Ref SsmPypiUsername
+          - Name: PYPI_PASSWORD
+            Type: PARAMETER_STORE
+            Value: '/codebuild/pypi/password'
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec_pypi.yml
+  Python37Build:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      ServiceRole: !GetAtt 'CodeBuildRole.Arn'
+      Description: !Sub 'Builds layer for ${LayerName} in python3.7'
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:2.0
+        Type: LINUX_CONTAINER
+      Source:
+        Type: CODEPIPELINE
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref ArtifactsBucket
+        Type: S3
+      RestartExecutionOnUpdate: true
+      RoleArn: !GetAtt 'CodePipelineRole.Arn'
+      Stages:
+        - Actions:
+            - ActionTypeId:
+                Category: Source
+                Owner: ThirdParty
+                Provider: GitHub
+                Version: '1'
+              Configuration:
+                Branch: !Ref BranchName
+                OAuthToken: !Ref 'GitHubOAuthToken'
+                Owner: lambda-my-aws
+                PollForSourceChanges: false
+                Repo: ozone
+              Name: SourceCode
+              OutputArtifacts:
+                - Name: SourceCode
+              RunOrder: '1'
+          Name: SourceCode
+        - Actions:
+            - ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref Python37Build
+              InputArtifacts:
+                - Name: SourceCode
+              Name: !Ref Python37Build
+              OutputArtifacts:
+                - Name: LayerBuild
+              RunOrder: '2'
+            - ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref PypiReleaseProject
+              InputArtifacts:
+                - Name: SourceCode
+              Name: !Ref PypiReleaseProject
+              RunOrder: '1'
+          Name: !Sub 'Build-${LayerName}'
+        - Actions:
+            - ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                RoleArn: !GetAtt 'CloudformationRole.Arn'
+                StackName: !Sub 'lambdalayer-${LayerName}'
+                TemplatePath: !Sub 'LayerBuild::cfn/${LayerName}/layer_template.yml'
+                TemplateConfiguration: !Sub 'LayerBuild::cfn/${LayerName}/layer_config.json'
+                Capabilities: 'CAPABILITY_AUTO_EXPAND'
+              InputArtifacts:
+                - Name: LayerBuild
+              Name: DeployLayer
+              RunOrder: '1'
+          Name: !Sub 'Release-${LayerName}'
+  PipelineWebhook:
+    Type: AWS::CodePipeline::Webhook
+    Properties:
+      Authentication: 'GITHUB_HMAC'
+      AuthenticationConfiguration:
+        SecretToken: !Ref 'GitHubOAuthToken'
+      Filters:
+        - JsonPath: ".$ref"
+          MatchEquals: ".$refs/tags/*"
+        - JsonPath: ".$ref"
+          MatchEquals: !Sub ".$$refs/heads/${BranchName}"
+      Name: 'NewTagPushed'
+      RegisterWithThirdParty: True
+      TargetAction: SourceCode
+      TargetPipeline: !Ref Pipeline
+      TargetPipelineVersion: !GetAtt 'Pipeline.Version'

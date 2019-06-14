@@ -6,16 +6,6 @@ ozone
 .. image:: https://img.shields.io/pypi/v/ozone.svg
         :target: https://pypi.python.org/pypi/ozone
 
-.. image:: https://img.shields.io/travis/johnpreston/ozone.svg
-        :target: https://travis-ci.org/johnpreston/ozone
-
-.. image:: https://readthedocs.org/projects/ozone/badge/?version=latest
-        :target: https://ozone.readthedocs.io/en/latest/?badge=latest
-        :alt: Documentation Status
-
-
-
-
 Python Library to manage Troposphere to manage AWS via CFN
 
 

@@ -1,0 +1,16 @@
+version: 0.2
+env:
+  parameter-store:
+    PYPI_USERNAME: /codebuild/pypi/username
+    PYPI_PASSWORD: /codebuild/pypi/password
+phases:
+  install:
+    runtime-versions:
+      python: 3.7
+    commands:
+      - pip --version && pip install pip --upgrade || curl https://bootstrap.pypa.io/get-pip.py | python
+      - pip install twine
+  build:
+    commands:
+      - python3 setup.py sdist
+      - twine upload dist/* -u $PYPI_USERNAME -p $PYPI_PASSWORD
