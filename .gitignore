@@ -1,0 +1,14 @@
+*~
+*.pyc
+*.json
+*.yml
+__pycache__/*
+layers.egg-info/*
+dist/*
+build/*
+*egg-info/*
+*.zip
+*.tar.gz
+*venv*
+!buildspec*.yml
+!ozone_pipeline.yml
