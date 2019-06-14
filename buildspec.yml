@@ -1,0 +1,32 @@
+version: 0.2
+env:
+  variables:
+    LAYER_NAME: ozone
+phases:
+  install:
+    runtime-versions:
+      python: 3.7
+    commands:
+      - pip --version && pip install pip --upgrade || curl https://bootstrap.pypa.io/get-pip.py | python
+      - pip install troposphere
+      - pip install awscli --upgrade
+      - pip install boto3 --upgrade
+  pre_build:
+    commands:
+      - export PY_VERSION=`python3 -c 'import sys; print("python%s.%s" % (sys.version_info[:2]))'`
+      - export PY_BUILD=$PWD/build/python/lib/${PY_VERSION}/site-packages
+      - export CFN_BUILD=$PWD/build/cfn/${LAYER_NAME}
+      - echo $PY_VERSION
+      - echo $PY_BUILD
+  build:
+    commands:
+      - mkdir -p $PY_BUILD
+      - cp -r $PWD/$LAYER_NAME $PY_BUILD/
+  post_build:
+    commands:
+      - mkdir -p $CFN_BUILD
+      - python3 $PWD/codebuild/layer.py --path $CFN_BUILD
+artifacts:
+  base-directory: build
+  files:
+    - '**/*'

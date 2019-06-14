@@ -1,0 +1,9 @@
+[flake8]
+
+ignore=W293,D100,D104,D107,D202,D203,D213,D400,D403,D406,D407,D413
+# no option to ignore line length, so set arbitrarily high
+max-line-length=99999
+# test files and any external packages should be ignored
+exclude=test_*.py,.venv,roles.galaxy
+
+select=,E,F,W,B,B902
