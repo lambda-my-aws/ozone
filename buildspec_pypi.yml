@@ -1,9 +1,8 @@
 version: 0.2
 env:
-  variables:
-    PYPI_USERNAME: 'JohnPreston'
   parameter-store:
-    PYPI_PASSWORD: /CodeBuild/pypipassword
+    PYPI_USERNAME: /codebuild/pypi/username
+    PYPI_PASSWORD: /codebuild/pypi/password
 phases:
   install:
     runtime-versions:
@@ -11,10 +10,7 @@ phases:
     commands:
       - pip --version && pip install pip --upgrade || curl https://bootstrap.pypa.io/get-pip.py | python
       - pip install twine
-      - export BUILD_DIR=$PWD/builddir
   build:
     commands:
-      - mkdir -p $BUILD_DIR
-      - cd $BUILD_DIR
-      - python3 setup.py sdist bdist_wheel
+      - python3 setup.py sdist
       - twine upload dist/* -u $PYPI_USERNAME -p $PYPI_PASSWORD

@@ -12,3 +12,4 @@ build/*
 *venv*
 !buildspec*.yml
 !ozone_pipeline.yml
+!release/*.yml

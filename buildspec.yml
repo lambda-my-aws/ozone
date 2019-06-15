@@ -8,9 +8,8 @@ phases:
       python: 3.7
     commands:
       - pip --version && pip install pip --upgrade || curl https://bootstrap.pypa.io/get-pip.py | python
-      - pip install troposphere
-      - pip install awscli --upgrade
-      - pip install boto3 --upgrade
+      - python -m venv venv
+      - pip install ozone --upgrade
   pre_build:
     commands:
       - export PY_VERSION=`python3 -c 'import sys; print("python%s.%s" % (sys.version_info[:2]))'`
@@ -21,11 +20,11 @@ phases:
   build:
     commands:
       - mkdir -p $PY_BUILD
-      - cp -r $PWD/$LAYER_NAME $PY_BUILD/
+      - pip install $LAYER_NAME -t $PY_BUILD
   post_build:
     commands:
       - mkdir -p $CFN_BUILD
-      - python3 $PWD/codebuild/layer.py --path $CFN_BUILD
+      - python3 $PWD/layer_build.py --path $CFN_BUILD
 artifacts:
   base-directory: build
   files:
