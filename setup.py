@@ -29,7 +29,7 @@ setup(
         'Intended Audience :: Developers',
         'License :: OSI Approved :: Apache Software License',
         'Natural Language :: English',
-        'Programming Language :: Python :: 3.7',
+        'Programming Language :: Python :: 3.7'
     ],
     description='Python Library wrapping Troposphere and boto3 to manage AWS via CFN',
     install_requires=requirements,
