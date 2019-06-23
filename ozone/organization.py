@@ -34,7 +34,7 @@ class Organization(object):
     Class to represent an organization
     """
 
-    def __init__(self, ouid=None, parent=None, client=None):
+    def __init__(self, ouid=None, parent=None, parent_name=None, client=None):
         """
         Initializes the OrganizationUnit node
         """
@@ -56,6 +56,10 @@ class Organization(object):
         else:
             self.name = 'Root'
             self.arn = client.list_roots()['Roots'][0]['Arn']
+        if self.name == 'Root' or parent_name is None:
+            self.path = ''
+        else:
+            self.path = f'{parent_name}/{self.name}'
         self.ous = []
 
         accounts = client.list_accounts_for_parent(
@@ -71,10 +75,37 @@ class Organization(object):
         )['Children']
 
         for unit in children_ous:
-            self.ous.append(Organization(unit['Id'], self.ouid, client))
+            self.ous.append(Organization(unit['Id'], self.ouid, self.path, client))
 
     def __repr__(self):
-        return json.dumps(self, indent=4)
+        return self.to_dict()
+
+
+    def get_organization_unit(self, ou_path, ou=None):
+        """
+        Get the details of an organization by name
+        """
+
+        if ou is None:
+            ou = self
+
+        if ou_path.startswith('/'):
+            ou_path = ou_path[1:]
+        if ou_path.split('/') and ou_path.endswith('/'):
+            ou_path = ou_path[:-1]
+
+        ou_child = ou_path.split('/', 1)[-1]
+        if ou_path.find('/') > 0:
+            ou_parent = ou_path.split('/', 1)[0]
+        else:
+            ou_parent = ou_path
+
+        for org in ou.ous:
+            if org.name == ou_path:
+                return org
+            if ou_parent == org.name:
+                if ou_child.split('/'):
+                    return self.get_organization_unit(ou_child, org)
 
 
     def get_all_accounts(self, accounts=None, nextou=None):
@@ -108,6 +139,11 @@ class Organization(object):
 
 
 if __name__ == '__main__':
-    Org = Organization()
-    print(json.dumps(Org.get_all_accounts(), indent=4))
+    from argparse import ArgumentParser
+    PARSER = ArgumentParser()
+    PARSER.add_argument('--ou-path', required=True)
+    ARGS = PARSER.parse_args()
 
+    Org = Organization()
+    ou = Org.get_organization_unit(ARGS.ou_path)
+    print(ou.get_all_accounts())
